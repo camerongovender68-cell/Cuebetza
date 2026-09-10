@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import { supabase } from '@/lib/supabase';
+
 type Mode = 'login' | 'signup';
 
 interface FormErrors {
@@ -29,6 +31,8 @@ export default function HomeScreen() {
   const [mode, setMode] = useState<Mode>('login');
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Shared fields
   const [email, setEmail] = useState('');
@@ -40,7 +44,11 @@ export default function HomeScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const clearErrors = () => setErrors({});
+  const clearErrors = () => {
+    setErrors({});
+    setFormError(null);
+    setSuccessMessage(null);
+  };
 
   const switchMode = (next: Mode) => {
     setMode(next);
@@ -70,17 +78,29 @@ export default function HomeScreen() {
   const handleSubmit = async () => {
     if (!validate()) return;
 
+    setFormError(null);
+    setSuccessMessage(null);
     setSubmitting(true);
     try {
       if (mode === 'login') {
-        // TODO: replace with real auth call
-        console.log('Login attempt', { email, password });
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (error) throw error;
       } else {
-        // TODO: replace with real auth call
-        console.log('Sign up attempt', { username, email, password });
+        // username is stashed in user metadata; a DB trigger (see supabase/schema.sql)
+        // copies it into the profiles table when the auth.users row is created.
+        const { error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { data: { username: username.trim() } },
+        });
+        if (error) throw error;
+        setSuccessMessage('Account created — check your email to confirm.');
       }
     } catch (err) {
-      console.error('Auth error', err);
+      setFormError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
       setSubmitting(false);
     }
@@ -131,6 +151,17 @@ export default function HomeScreen() {
 
             {/* Form card */}
             <View style={styles.card}>
+              {formError && (
+                <View style={styles.banner}>
+                  <Text style={styles.bannerErrorText}>{formError}</Text>
+                </View>
+              )}
+              {successMessage && (
+                <View style={styles.banner}>
+                  <Text style={styles.bannerSuccessText}>{successMessage}</Text>
+                </View>
+              )}
+
               {mode === 'signup' && (
                 <FormField
                   label="Username"
@@ -337,6 +368,17 @@ const styles = StyleSheet.create({
   inputAction: { position: 'absolute', right: 14 },
   inputActionText: { color: GOLD, fontSize: 12, fontWeight: '700' },
   errorText: { color: ERROR_RED, fontSize: 12, marginTop: 6 },
+  banner: {
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    backgroundColor: '#08160F',
+    borderWidth: 1,
+    borderColor: '#1E4531',
+  },
+  bannerErrorText: { color: ERROR_RED, fontSize: 13, textAlign: 'center' },
+  bannerSuccessText: { color: '#9BC4A9', fontSize: 13, textAlign: 'center' },
   forgotPassword: { alignSelf: 'flex-end', marginBottom: 16, marginTop: -8 },
   forgotPasswordText: { color: GOLD, fontSize: 13, fontWeight: '600' },
   primaryButton: {
